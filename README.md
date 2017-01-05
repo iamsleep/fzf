@@ -82,6 +82,20 @@ method used.
 - brew: `brew update; brew reinstall fzf`
 - vim-plug: `:PlugUpdate fzf`
 
+### Windows
+
+Pre-built binaries for Windows can be downloaded [here][bin]. However, other
+components of the project may not work on Windows. You might want to consider
+installing fzf on [Windows Subsystem for Linux][wsl] where everything runs
+flawlessly.
+
+[wsl]: https://blogs.msdn.microsoft.com/wsl/
+
+Building fzf
+------------
+
+See [BUILD.md](BUILD.md).
+
 Usage
 -----
 
@@ -102,7 +116,7 @@ vim $(fzf)
 
 #### Using the finder
 
-- `CTRL-J` / `CTRL-K` (or `CTRL-N` / `CTRL-P)` to move cursor up and down
+- `CTRL-J` / `CTRL-K` (or `CTRL-N` / `CTRL-P`) to move cursor up and down
 - `Enter` key to select the item, `CTRL-C` / `CTRL-G` / `ESC` to exit
 - On multi-select mode (`-m`), `TAB` and `Shift-TAB` to mark multiple items
 - Emacs style key bindings
@@ -144,6 +158,10 @@ or `py`.
 - `FZF_DEFAULT_OPTS`
     - Default options
     - e.g. `export FZF_DEFAULT_OPTS="--reverse --inline-info"`
+
+#### Options
+
+See the man page (`man fzf`) for the full list of options.
 
 Examples
 --------
@@ -195,6 +213,8 @@ pane with `FZF_TMUX_HEIGHT` (e.g. `20`, `50%`).
 If you use vi mode on bash, you need to add `set -o vi` *before* `source
 ~/.fzf.bash` in your .bashrc, so that it correctly sets up key bindings for vi
 mode.
+
+More tips can be found on [the wiki page](https://github.com/junegunn/fzf/wiki/Configuring-shell-key-bindings).
 
 Fuzzy completion for bash and zsh
 ---------------------------------
@@ -319,7 +339,7 @@ Note that the environment variables `FZF_DEFAULT_COMMAND` and
 `FZF_DEFAULT_OPTS` also apply here. Refer to [the wiki page][fzf-config] for
 customization.
 
-[fzf-config]: https://github.com/junegunn/fzf/wiki/Configuring-FZF-command-(vim)
+[fzf-config]: https://github.com/junegunn/fzf/wiki/Configuring-Vim-plugin
 
 #### `fzf#run`
 
@@ -347,7 +367,8 @@ page](https://github.com/junegunn/fzf/wiki/Examples-(vim)).
 
 `fzf#wrap([name string,] [opts dict,] [fullscreen boolean])` is a helper
 function that decorates the options dictionary so that it understands
-`g:fzf_layout`, `g:fzf_action`, and `g:fzf_history_dir` like `:FZF`.
+`g:fzf_layout`, `g:fzf_action`, `g:fzf_colors`, and `g:fzf_history_dir` like
+`:FZF`.
 
 ```vim
 command! -bang MyStuff
@@ -413,11 +434,36 @@ export FZF_DEFAULT_COMMAND='
 
 It's [a known bug of fish](https://github.com/fish-shell/fish-shell/issues/1362)
 that it doesn't allow reading from STDIN in command substitution, which means
-simple `vim (fzf)` won't work as expected. The workaround is to store the result
-of fzf to a temporary file.
+simple `vim (fzf)` won't work as expected. The workaround is to use the `read`
+fish command:
 
 ```sh
-fzf > $TMPDIR/fzf.result; and vim (cat $TMPDIR/fzf.result)
+fzf | read -l result; and vim $result
+```
+
+or, for multiple results:
+
+```sh
+fzf -m | while read -l r; set result $result $r; end; and vim $result
+```
+
+The globbing system is different in fish and thus `**` completion will not work.
+However, the `CTRL-T` command will use the last token on the commandline as the
+root folder for the recursive search. For instance, hitting `CTRL-T` at the end
+of the following commandline
+
+```sh
+ls /var/
+```
+
+will list all files and folders under `/var/`.
+
+When using a custom `FZF_CTRL_T_COMMAND`, use the unexpanded `$dir` variable to
+make use of this feature. `$dir` defaults to `.` when the last token is not a
+valid directory. Example:
+
+```sh
+set -l FZF_CTRL_T_COMMAND "command find -L \$dir -type f 2> /dev/null | sed '1d; s#^\./##'"
 ```
 
 License

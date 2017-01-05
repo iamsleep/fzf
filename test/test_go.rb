@@ -136,8 +136,10 @@ class Tmux
   def prepare
     tries = 0
     begin
-      self.send_keys 'C-u', 'hello', 'Right'
-      self.until { |lines| lines[-1].end_with?('hello') }
+      self.until do |lines|
+        self.send_keys 'C-u', 'hello'
+        lines[-1].end_with?('hello')
+      end
     rescue Exception
       (tries += 1) < 5 ? retry : raise
     end
@@ -604,8 +606,8 @@ class TestGoFZF < TestBase
     ], `#{FZF} -fo --tiebreak=end < #{tempname}`.split($/)
 
     assert_equal [
-      '  xxxxoxxx',
       'xxxxxoxxx',
+      '  xxxxoxxx',
       'xxxxoxxxx',
       'xxxoxxxxxx',
       'xxoxxxxxxx',
@@ -1056,7 +1058,7 @@ class TestGoFZF < TestBase
   def test_invalid_term
     lines = `TERM=xxx #{FZF}`
     assert_equal 2, $?.exitstatus
-    assert lines.include?('Invalid $TERM: xxx')
+    assert lines.include?('Invalid $TERM: xxx') || lines.include?('terminal entry not found')
   end
 
   def test_invalid_option
@@ -1251,24 +1253,29 @@ module TestShell
     tmux.send_keys 'cat ', 'C-t', pane: 0
     tmux.until(1) { |lines| lines.item_count >= 1 }
     tmux.send_keys 'fzf-unicode', pane: 1
-    tmux.until(1) { |lines| lines[-2].start_with? '  2/' }
+    redraw = ->() { tmux.send_keys 'C-l', pane: 1 }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *2/) }
 
     tmux.send_keys '1', pane: 1
-    tmux.until(1) { |lines| lines[-2].start_with? '  1/' }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *1/) }
     tmux.send_keys :BTab, pane: 1
-    tmux.until(1) { |lines| lines[-2].include? '(1)' }
+    tmux.until(1) { |lines| redraw.(); lines[-2].include? '(1)' }
 
     tmux.send_keys :BSpace, pane: 1
-    tmux.until(1) { |lines| lines[-2].start_with? '  2/' }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *2/) }
 
     tmux.send_keys '2', pane: 1
-    tmux.until(1) { |lines| lines[-2].start_with? '  1/' }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *1/) }
     tmux.send_keys :BTab, pane: 1
-    tmux.until(1) { |lines| lines[-2].include? '(2)' }
+    tmux.until(1) { |lines| redraw.(); lines[-2].include? '(2)' }
 
     tmux.send_keys :Enter, pane: 1
-    tmux.until { |lines| lines[-1].include?('cat') || lines[-2].include?('cat') }
-    tmux.until { |lines| lines[-1].include?('fzf-unicode') || lines[-2].include?('fzf-unicode') }
+    tmux.until do |lines|
+      tmux.send_keys 'C-l'
+      [-1, -2].map { |offset| lines[offset] }.any? do |line|
+        line.start_with?('cat') && line.include?('fzf-unicode')
+      end
+    end
     tmux.send_keys :Enter
     tmux.until { |lines| lines[-1].include? 'test1test2' }
   end
@@ -1479,23 +1486,27 @@ module CompletionTest
     tmux.paste 'cd /tmp/fzf-test; echo -n test3 > "fzf-unicode 테스트1"; echo -n test4 > "fzf-unicode 테스트2"'
     tmux.prepare
     tmux.send_keys 'cat fzf-unicode**', :Tab, pane: 0
-    tmux.until(1) { |lines| lines[-2].start_with? '  2/' }
+    redraw = ->() { tmux.send_keys 'C-l', pane: 1 }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *2/) }
 
     tmux.send_keys '1', pane: 1
-    tmux.until(1) { |lines| lines[-2].start_with? '  1/' }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *1/) }
     tmux.send_keys :BTab, pane: 1
-    tmux.until(1) { |lines| lines[-2].include? '(1)' }
+    tmux.until(1) { |lines| redraw.(); lines[-2].include? '(1)' }
 
     tmux.send_keys :BSpace, pane: 1
-    tmux.until(1) { |lines| lines[-2].start_with? '  2/' }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *2/) }
 
     tmux.send_keys '2', pane: 1
-    tmux.until(1) { |lines| lines[-2].start_with? '  1/' }
+    tmux.until(1) { |lines| redraw.(); lines[-2] =~ %r(^ *1/) }
     tmux.send_keys :BTab, pane: 1
-    tmux.until(1) { |lines| lines[-2].include? '(2)' }
+    tmux.until(1) { |lines| redraw.(); lines[-2].include? '(2)' }
 
     tmux.send_keys :Enter, pane: 1
-    tmux.until { |lines| lines[-1].include?('cat') || lines[-2].include?('cat') }
+    tmux.until do |lines|
+      tmux.send_keys 'C-l'
+      lines[-1].include?('cat') || lines[-2].include?('cat')
+    end
     tmux.send_keys :Enter
     tmux.until { |lines| lines[-1].include? 'test3test4' }
   end

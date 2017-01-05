@@ -2,8 +2,8 @@
 
 set -u
 
-[[ "$@" =~ --pre ]] && version=0.15.4 pre=1 ||
-                       version=0.15.4 pre=0
+[[ "$@" =~ --pre ]] && version=0.15.9 pre=1 ||
+                       version=0.15.9 pre=0
 
 auto_completion=
 key_bindings=
@@ -299,12 +299,6 @@ for shell in $shells; do
 # ---------
 if [[ ! "\$PATH" == *$fzf_base/bin* ]]; then
   export PATH="\$PATH:$fzf_base/bin"
-fi
-
-# Man path
-# --------
-if [[ ! "\$MANPATH" == *$fzf_base/man* && -d "$fzf_base/man" ]]; then
-  export MANPATH="\$MANPATH:$fzf_base/man"
 fi
 
 # Auto-completion

@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/junegunn/fzf/src/algo"
-	"github.com/junegunn/fzf/src/curses"
+	"github.com/junegunn/fzf/src/tui"
 
 	"github.com/junegunn/go-shellwords"
 )
@@ -57,6 +57,7 @@ const usage = `usage: fzf [options]
     --ansi                Enable processing of ANSI color codes
     --tabstop=SPACES      Number of spaces for a tab character (default: 8)
     --color=COLSPEC       Base scheme (dark|light|16|bw) and/or custom colors
+    --no-bold             Do not use bold text
 
   History
     --history=FILE        History file
@@ -65,7 +66,7 @@ const usage = `usage: fzf [options]
   Preview
     --preview=COMMAND     Command to preview highlighted line ({})
     --preview-window=OPT  Preview window layout (default: right:50%)
-                          [up|down|left|right][:SIZE[%]][:hidden]
+                          [up|down|left|right][:SIZE[%]][:wrap][:hidden]
 
   Scripting
     -q, --query=STR       Start the finder with the given query
@@ -125,6 +126,7 @@ type previewOpts struct {
 	position windowPosition
 	size     sizeSpec
 	hidden   bool
+	wrap     bool
 }
 
 // Options stores the values of command-line options
@@ -142,8 +144,9 @@ type Options struct {
 	Multi       bool
 	Ansi        bool
 	Mouse       bool
-	Theme       *curses.ColorTheme
+	Theme       *tui.ColorTheme
 	Black       bool
+	Bold        bool
 	Reverse     bool
 	Cycle       bool
 	Hscroll     bool
@@ -187,8 +190,9 @@ func defaultOptions() *Options {
 		Multi:       false,
 		Ansi:        false,
 		Mouse:       true,
-		Theme:       curses.EmptyTheme(),
+		Theme:       tui.EmptyTheme(),
 		Black:       false,
+		Bold:        true,
 		Reverse:     false,
 		Cycle:       false,
 		Hscroll:     true,
@@ -204,7 +208,7 @@ func defaultOptions() *Options {
 		Expect:      make(map[int]string),
 		Keymap:      make(map[int]actionType),
 		Execmap:     make(map[int]string),
-		Preview:     previewOpts{"", posRight, sizeSpec{50, true}, false},
+		Preview:     previewOpts{"", posRight, sizeSpec{50, true}, false, false},
 		PrintQuery:  false,
 		ReadZero:    false,
 		Printer:     func(str string) { fmt.Println(str) },
@@ -246,7 +250,7 @@ func nextString(args []string, i *int, message string) string {
 }
 
 func optionalNextString(args []string, i *int) string {
-	if len(args) > *i+1 {
+	if len(args) > *i+1 && !strings.HasPrefix(args[*i+1], "-") {
 		*i++
 		return args[*i]
 	}
@@ -327,6 +331,10 @@ func isAlphabet(char uint8) bool {
 	return char >= 'a' && char <= 'z'
 }
 
+func isNumeric(char uint8) bool {
+	return char >= '0' && char <= '9'
+}
+
 func parseAlgo(str string) algo.Algo {
 	switch str {
 	case "v1":
@@ -358,60 +366,66 @@ func parseKeyChords(str string, message string) map[int]string {
 		chord := 0
 		switch lkey {
 		case "up":
-			chord = curses.Up
+			chord = tui.Up
 		case "down":
-			chord = curses.Down
+			chord = tui.Down
 		case "left":
-			chord = curses.Left
+			chord = tui.Left
 		case "right":
-			chord = curses.Right
+			chord = tui.Right
 		case "enter", "return":
-			chord = curses.CtrlM
+			chord = tui.CtrlM
 		case "space":
-			chord = curses.AltZ + int(' ')
+			chord = tui.AltZ + int(' ')
 		case "bspace", "bs":
-			chord = curses.BSpace
+			chord = tui.BSpace
 		case "alt-enter", "alt-return":
-			chord = curses.AltEnter
+			chord = tui.AltEnter
 		case "alt-space":
-			chord = curses.AltSpace
+			chord = tui.AltSpace
 		case "alt-/":
-			chord = curses.AltSlash
+			chord = tui.AltSlash
 		case "alt-bs", "alt-bspace":
-			chord = curses.AltBS
+			chord = tui.AltBS
 		case "tab":
-			chord = curses.Tab
+			chord = tui.Tab
 		case "btab", "shift-tab":
-			chord = curses.BTab
+			chord = tui.BTab
 		case "esc":
-			chord = curses.ESC
+			chord = tui.ESC
 		case "del":
-			chord = curses.Del
+			chord = tui.Del
 		case "home":
-			chord = curses.Home
+			chord = tui.Home
 		case "end":
-			chord = curses.End
+			chord = tui.End
 		case "pgup", "page-up":
-			chord = curses.PgUp
+			chord = tui.PgUp
 		case "pgdn", "page-down":
-			chord = curses.PgDn
+			chord = tui.PgDn
 		case "shift-left":
-			chord = curses.SLeft
+			chord = tui.SLeft
 		case "shift-right":
-			chord = curses.SRight
+			chord = tui.SRight
 		case "double-click":
-			chord = curses.DoubleClick
+			chord = tui.DoubleClick
 		case "f10":
-			chord = curses.F10
+			chord = tui.F10
+		case "f11":
+			chord = tui.F11
+		case "f12":
+			chord = tui.F12
 		default:
 			if len(key) == 6 && strings.HasPrefix(lkey, "ctrl-") && isAlphabet(lkey[5]) {
-				chord = curses.CtrlA + int(lkey[5]) - 'a'
+				chord = tui.CtrlA + int(lkey[5]) - 'a'
 			} else if len(key) == 5 && strings.HasPrefix(lkey, "alt-") && isAlphabet(lkey[4]) {
-				chord = curses.AltA + int(lkey[4]) - 'a'
+				chord = tui.AltA + int(lkey[4]) - 'a'
+			} else if len(key) == 5 && strings.HasPrefix(lkey, "alt-") && isNumeric(lkey[4]) {
+				chord = tui.Alt0 + int(lkey[4]) - '0'
 			} else if len(key) == 2 && strings.HasPrefix(lkey, "f") && key[1] >= '1' && key[1] <= '9' {
-				chord = curses.F1 + int(key[1]) - '1'
+				chord = tui.F1 + int(key[1]) - '1'
 			} else if utf8.RuneCountInString(key) == 1 {
-				chord = curses.AltZ + int([]rune(key)[0])
+				chord = tui.AltZ + int([]rune(key)[0])
 			} else {
 				errorExit("unsupported key: " + key)
 			}
@@ -458,7 +472,7 @@ func parseTiebreak(str string) []criterion {
 	return criteria
 }
 
-func dupeTheme(theme *curses.ColorTheme) *curses.ColorTheme {
+func dupeTheme(theme *tui.ColorTheme) *tui.ColorTheme {
 	if theme != nil {
 		dupe := *theme
 		return &dupe
@@ -466,16 +480,16 @@ func dupeTheme(theme *curses.ColorTheme) *curses.ColorTheme {
 	return nil
 }
 
-func parseTheme(defaultTheme *curses.ColorTheme, str string) *curses.ColorTheme {
+func parseTheme(defaultTheme *tui.ColorTheme, str string) *tui.ColorTheme {
 	theme := dupeTheme(defaultTheme)
 	for _, str := range strings.Split(strings.ToLower(str), ",") {
 		switch str {
 		case "dark":
-			theme = dupeTheme(curses.Dark256)
+			theme = dupeTheme(tui.Dark256)
 		case "light":
-			theme = dupeTheme(curses.Light256)
+			theme = dupeTheme(tui.Light256)
 		case "16":
-			theme = dupeTheme(curses.Default16)
+			theme = dupeTheme(tui.Default16)
 		case "bw", "no":
 			theme = nil
 		default:
@@ -495,14 +509,12 @@ func parseTheme(defaultTheme *curses.ColorTheme, str string) *curses.ColorTheme 
 			if err != nil || ansi32 < -1 || ansi32 > 255 {
 				fail()
 			}
-			ansi := int16(ansi32)
+			ansi := tui.Color(ansi32)
 			switch pair[0] {
 			case "fg":
 				theme.Fg = ansi
-				theme.UseDefault = theme.UseDefault && ansi < 0
 			case "bg":
 				theme.Bg = ansi
-				theme.UseDefault = theme.UseDefault && ansi < 0
 			case "fg+":
 				theme.Current = ansi
 			case "bg+":
@@ -574,9 +586,9 @@ func parseKeymap(keymap map[int]actionType, execmap map[int]string, str string) 
 		}
 		var key int
 		if len(pair[0]) == 1 && pair[0][0] == escapedColon {
-			key = ':' + curses.AltZ
+			key = ':' + tui.AltZ
 		} else if len(pair[0]) == 1 && pair[0][0] == escapedComma {
-			key = ',' + curses.AltZ
+			key = ',' + tui.AltZ
 		} else {
 			keys := parseKeyChords(pair[0], "key name required")
 			key = firstKey(keys)
@@ -749,39 +761,43 @@ func parseSize(str string, maxPercent float64, label string) sizeSpec {
 }
 
 func parsePreviewWindow(opts *previewOpts, input string) {
-	layout := input
+	// Default
+	opts.position = posRight
+	opts.size = sizeSpec{50, true}
 	opts.hidden = false
-	if strings.HasSuffix(layout, ":hidden") {
-		opts.hidden = true
-		layout = strings.TrimSuffix(layout, ":hidden")
-	}
+	opts.wrap = false
 
-	tokens := strings.Split(layout, ":")
-	if len(tokens) == 0 || len(tokens) > 2 {
-		errorExit("invalid window layout: " + input)
-	}
-
-	if len(tokens) > 1 {
-		opts.size = parseSize(tokens[1], 99, "window size")
-	} else {
-		opts.size = sizeSpec{50, true}
+	tokens := strings.Split(input, ":")
+	sizeRegex := regexp.MustCompile("^[1-9][0-9]*%?$")
+	for _, token := range tokens {
+		switch token {
+		case "hidden":
+			opts.hidden = true
+		case "wrap":
+			opts.wrap = true
+		case "up", "top":
+			opts.position = posUp
+		case "down", "bottom":
+			opts.position = posDown
+		case "left":
+			opts.position = posLeft
+		case "right":
+			opts.position = posRight
+		default:
+			if sizeRegex.MatchString(token) {
+				opts.size = parseSize(token, 99, "window size")
+			} else {
+				errorExit("invalid preview window layout: " + input)
+			}
+		}
 	}
 	if !opts.size.percent && opts.size.size > 0 {
 		// Adjust size for border
 		opts.size.size += 2
-	}
-
-	switch tokens[0] {
-	case "up":
-		opts.position = posUp
-	case "down":
-		opts.position = posDown
-	case "left":
-		opts.position = posLeft
-	case "right":
-		opts.position = posRight
-	default:
-		errorExit("invalid window position: " + input)
+		// And padding
+		if opts.position == posLeft || opts.position == posRight {
+			opts.size.size += 2
+		}
 	}
 }
 
@@ -870,7 +886,7 @@ func parseOptions(opts *Options, allArgs []string) {
 		case "--color":
 			spec := optionalNextString(allArgs, &i)
 			if len(spec) == 0 {
-				opts.Theme = curses.EmptyTheme()
+				opts.Theme = tui.EmptyTheme()
 			} else {
 				opts.Theme = parseTheme(opts.Theme, spec)
 			}
@@ -907,11 +923,15 @@ func parseOptions(opts *Options, allArgs []string) {
 		case "+c", "--no-color":
 			opts.Theme = nil
 		case "+2", "--no-256":
-			opts.Theme = curses.Default16
+			opts.Theme = tui.Default16
 		case "--black":
 			opts.Black = true
 		case "--no-black":
 			opts.Black = false
+		case "--bold":
+			opts.Bold = true
+		case "--no-bold":
+			opts.Bold = false
 		case "--reverse":
 			opts.Reverse = true
 		case "--no-reverse":
@@ -982,7 +1002,7 @@ func parseOptions(opts *Options, allArgs []string) {
 			opts.Preview.command = ""
 		case "--preview-window":
 			parsePreviewWindow(&opts.Preview,
-				nextString(allArgs, &i, "preview window layout required: [up|down|left|right][:SIZE[%]]"))
+				nextString(allArgs, &i, "preview window layout required: [up|down|left|right][:SIZE[%]][:wrap][:hidden]"))
 		case "--no-margin":
 			opts.Margin = defaultMargin()
 		case "--margin":
@@ -1073,11 +1093,11 @@ func parseOptions(opts *Options, allArgs []string) {
 func postProcessOptions(opts *Options) {
 	// Default actions for CTRL-N / CTRL-P when --history is set
 	if opts.History != nil {
-		if _, prs := opts.Keymap[curses.CtrlP]; !prs {
-			opts.Keymap[curses.CtrlP] = actPreviousHistory
+		if _, prs := opts.Keymap[tui.CtrlP]; !prs {
+			opts.Keymap[tui.CtrlP] = actPreviousHistory
 		}
-		if _, prs := opts.Keymap[curses.CtrlN]; !prs {
-			opts.Keymap[curses.CtrlN] = actNextHistory
+		if _, prs := opts.Keymap[tui.CtrlN]; !prs {
+			opts.Keymap[tui.CtrlN] = actNextHistory
 		}
 	}
 

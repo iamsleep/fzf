@@ -1,6 +1,47 @@
 CHANGELOG
 =========
 
+0.15.9
+------
+- Fixed rendering glitches introduced in 0.15.8
+- The default escape delay is reduced to 50ms and is configurable via
+  `$ESCDELAY`
+- Scroll indicator at the top-right corner of the preview window is always
+  displayed when there's overflow
+- Can now be built with ncurses 6 or tcell to support extra features
+    - *ncurses 6*
+        - Supports more than 256 color pairs
+        - Supports italics
+    - *tcell*
+        - 24-bit color support
+    - See https://github.com/junegunn/fzf/blob/master/BUILD.md
+
+0.15.8
+------
+- Updated ANSI processor to handle more VT-100 escape sequences
+- Added `--no-bold` (and `--bold`) option
+- Improved escape sequence processing for WSL
+- Added support for `alt-[0-9]`, `f11`, and `f12` for `--bind` and `--expect`
+
+0.15.7
+------
+- Fixed panic when color is disabled and header lines contain ANSI colors
+
+0.15.6
+------
+- Windows binaries! (@kelleyma49)
+- Fixed the bug where header lines are cleared when preview window is toggled
+- Fixed not to display ^N and ^O on screen
+- Fixed cursor keys (or any key sequence that starts with ESC) on WSL by
+  making fzf wait for additional keystrokes after ESC for up to 100ms
+
+0.15.5
+------
+- Setting foreground color will no longer set background color to black
+    - e.g. `fzf --color fg:153`
+- `--tiebreak=end` will consider relative position instead of absolute distance
+- Updated `fzf#wrap` function to respect `g:fzf_colors`
+
 0.15.4
 ------
 - Added support for range expression in preview and execute action
